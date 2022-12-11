@@ -13,12 +13,22 @@ import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.gms.maps.model.MarkerOptions
+import com.google.maps.android.clustering.ClusterManager
 import com.heeyjinny.googlemapclustering.data.Library
+import com.heeyjinny.googlemapclustering.data.Row
 import com.heeyjinny.googlemapclustering.databinding.ActivityMapsBinding
 import retrofit2.*
 import retrofit2.converter.gson.GsonConverterFactory
 
 /**  서울 공공도서관 앱 개발하기  **/
+/**  ++구글 맵 클러스터링 사용(마커)  **/
+
+//++1 구글 맵 클러스터링
+//지도에 나타나는 여러 개의 마커를 묶어 하나의 그룹으로 표시
+//마커에 해당하는 클래스가 Row클래스 이기 때문에
+//data - Row클래스에서 클러스터아이템 상속 받은 후
+//좌표를 반환하는 함수와 부가 정보를 반환하는 함수들 구현
+//Row.kt 수정
 
 //1
 //구글 지도 API키 추가
@@ -46,6 +56,11 @@ import retrofit2.converter.gson.GsonConverterFactory
 //클래스 안에 레트로핏에서 사용할 인터페이스 생성
 
 class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
+
+    //++2
+    //클러스터 매니저를 통해 클러스터 사용...
+    //클러스터 매니저 프로퍼티 선언
+    private lateinit var clusterManager: ClusterManager<Row>
 
     private lateinit var mMap: GoogleMap
     private lateinit var binding: ActivityMapsBinding
@@ -75,35 +90,49 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     override fun onMapReady(googleMap: GoogleMap) {
         mMap = googleMap
 
+        //++3
+        //클러스터 매니저 초기화 및 설정
+        //마커를 표시하기 전 설정
+        //Map이 생성 된 직후 설정함
+        clusterManager = ClusterManager(this, mMap)
+        //++3-1
+        //화면 이동 후 멈췄을 때 설정
+        mMap.setOnCameraIdleListener(clusterManager)
+        //++3-2
+        //마커 클릭 설정
+        mMap.setOnMarkerClickListener(clusterManager)
+
         //8
         //loadLibraries()호출
         loadLibraries()
 
-        //9-2
-        //마커에 tag단 것을 이용해
-        //마커를 클릭했을 때 홈페이지 주소를 웹브라우저로 생성
-        mMap.setOnMarkerClickListener {
-
-            //9-3
-            //마커의 tag가 null값이 아니라면
-            if (it.tag != null){
-
-                //9-4
-                //마커의 tag를 String으로 형변환하고
-                //tag가 http로 시작하지 않으면
-                //http://문자열을 앞에 추가
-                var url = it.tag as String
-                if (!url.startsWith("http")){
-                    url = "http://${url}"
-                }
-                //9-5
-                //완성된 url을 intent로 생성한 후
-                //액티비티 호출
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                startActivity(intent)
-            }
-            true
-        }
+        //++4
+        //기존 마커 세팅 코드 삭제
+//        //9-2
+//        //마커에 tag단 것을 이용해
+//        //마커를 클릭했을 때 홈페이지 주소를 웹브라우저로 생성
+//        mMap.setOnMarkerClickListener {
+//
+//            //9-3
+//            //마커의 tag가 null값이 아니라면
+//            if (it.tag != null){
+//
+//                //9-4
+//                //마커의 tag를 String으로 형변환하고
+//                //tag가 http로 시작하지 않으면
+//                //http://문자열을 앞에 추가
+//                var url = it.tag as String
+//                if (!url.startsWith("http")){
+//                    url = "http://${url}"
+//                }
+//                //9-5
+//                //완성된 url을 intent로 생성한 후
+//                //액티비티 호출
+//                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+//                startActivity(intent)
+//            }
+//            true
+//        }
 
     }//onMapReady
 
@@ -163,40 +192,54 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         //마커 전체의 영역으로 먼저 구해
         //마커의 영역만큼 보여주는 코드 작성
         //마커의 영역으로 저장하는 LatLngBounds.Builder생성
+
+        //latLngBounds 는 전체 마커를 화면에 보여주기 위한 용도
+        //현재 내 위치 기준으로 마커표시한다면 필요하지 않음...
         val latLngBounds = LatLngBounds.Builder()
 
         //6-1
         //파라미터로 전달된 libraries의
         //SeoulPublicLibraryInfo.row에 도서관 목록이 있음
         //반복문으로 하나씩 꺼내어 미커 생성하여 추가
+        //++5
+        //반복문에 마커 생성코드 삭제
+        //클러스터 메니저에 직접 데이터 추가
         for (lib in libraries.SeoulPublicLibraryInfo.row){
 
+            //++5-1
+            //클러스터 매니저에 데이터 추가
+            clusterManager.addItem(lib)
+
+            //++5-2
+            //첫 화면에 보여줄 범위를 정하기 위해 코드 남겨두기...
             //6-2
             //마커좌표 생성
             val position = LatLng(lib.XCNTS.toDouble(), lib.YDNTS.toDouble())
-
-            //6-3
-            //좌표와 도서관 이름으로 마커 생성
-            val marker = MarkerOptions().position(position).title(lib.LBRRY_NAME)
-
-            //6-4
-            //마커를 지도에 추가
-            mMap.addMarker(marker)
-
-            //9
-            //도서관 이름 클릭 시 홈페이지로 이동하기
-            //도서관 홈페이지 URL검사 후
-            //홈페이지를 웹 프라우저에 띄우는 코드 작성
-            //9-1
-            //6-4코드 수정
-            //마커에 tag정보 추가
-            //지도에 마커를 추가하고 그 마커 tag값에 홈페이지 주소 저장
-            var obj = mMap.addMarker(marker)
-            obj?.tag = lib.HMPG_URL
-
+//
+//            //6-3
+//            //좌표와 도서관 이름으로 마커 생성
+//            val marker = MarkerOptions().position(position).title(lib.LBRRY_NAME)
+//
+//            //6-4
+//            //마커를 지도에 추가
+//            mMap.addMarker(marker)
+//
+//            //9
+//            //도서관 이름 클릭 시 홈페이지로 이동하기
+//            //도서관 홈페이지 URL검사 후
+//            //홈페이지를 웹 프라우저에 띄우는 코드 작성
+//            //9-1
+//            //6-4코드 수정
+//            //마커에 tag정보 추가
+//            //지도에 마커를 추가하고 그 마커 tag값에 홈페이지 주소 저장
+//            var obj = mMap.addMarker(marker)
+//            obj?.tag = lib.HMPG_URL
+//
+            //++5-2
+            //첫 화면에 보여줄 범위를 정하기 위해 코드 남겨두기...
             //7-1
             //지도에 마커 추가 후 latLngBounds에도 마커 추가
-            latLngBounds.include(marker.position)
+            latLngBounds.include(position)
 
         }
 
